@@ -1,6 +1,6 @@
-import System.Exit
 import Lib
 import Text.Megaparsec
+import Text.Megaparsec.Char
 
 {-
 main :: IO ()
@@ -11,8 +11,24 @@ main = do
     exitWith (ExitFailure 1)
     -}
 
+p1 :: Parser String
+p1 = between sc eof (lexeme (string "object"))
+
+t2 = do
+    parseTest p1 "object"
+
+t3 = do
+    contents <- readFile "test/workflow.txt"
+    parseTest (between sc eof wfParser ) contents
+
+
+t1 :: IO ()
+t1 = do
+    contents <- readFile "test/output.txt"
+    parseTest (between sc eof workflowOutputsParser ) contents
+
 main :: IO ()
 main = do
-    contents <- readFile "test/output.txt"
-    putStrLn contents
-    parseTest workflowOutputsParser contents
+    t2
+    t1
+    t3

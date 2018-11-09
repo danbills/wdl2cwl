@@ -1,11 +1,17 @@
 {-# LANGUAGE DuplicateRecordFields #-}
-module Lib
-    ( someFunc, workflowOutputsParser
-    ) where
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators #-}
 
+module Lib
+    --( someFunc, workflowOutputsParser, stringsParser, testParser, sc) where
+     where
+
+import GHC.Generics
 import Control.Monad (void)
+import Debug.Trace
 import Data.List
-import Control.Monad.Combinators.Expr
 import Data.Void
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -13,45 +19,6 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
-
-data BExpr
-  = BoolConst Bool
-  | Not BExpr
-  | BBinary BBinOp BExpr BExpr
-  | RBinary RBinOp AExpr AExpr
-  deriving (Show)
-
-data BBinOp
-  = And
-  | Or
-  deriving (Show)
-
-data RBinOp
-  = Greater
-  | Less
-  deriving (Show)
-
-data AExpr
-  = Var String
-  | IntConst Integer
-  | Neg AExpr
-  | ABinary ABinOp AExpr AExpr
-  deriving (Show)
-
-data ABinOp
-  = Add
-  | Subtract
-  | Multiply
-  | Divide
-  deriving (Show)
-
-data Stmt
-  = Seq [Stmt]
-  | Assign String AExpr
-  | If BExpr Stmt Stmt
-  | While BExpr Stmt
-  | Skip
-  deriving (Show)
 
 type Parser = Parsec Void String
 
@@ -61,135 +28,22 @@ sc = L.space space1 lineCmnt blockCmnt
     lineCmnt  = L.skipLineComment "#"
     blockCmnt = L.skipBlockComment "/*" "*/"
 
+sc2 :: Parser ()
+sc2 = L.space space1 lineCmnt blockCmnt
+  where
+    lineCmnt  = L.skipLineComment "#"
+    blockCmnt = L.skipBlockComment "/*" "*/"
+
 lexeme :: Parser a -> Parser a
-lexeme = L.lexeme sc
-
-symbol :: String -> Parser String
-symbol = L.symbol sc
-
--- | 'parens' parses something between parenthesis.
-
-parens :: Parser a -> Parser a
-parens = between (symbol "(") (symbol ")")
-
--- | 'integer' parses an integer.
-
-integer :: Parser Integer
-integer = lexeme L.decimal
-
--- | 'semi' parses a semicolon.
-
-semi :: Parser String
-semi = symbol ";"
+lexeme = try . L.lexeme sc
 
 rword :: String -> Parser ()
 rword w = (lexeme . try) (string w *> notFollowedBy alphaNumChar)
-
-rws :: [String] -- list of reserved words
-rws = ["if","then","else","while","do","skip","true","false","not","and","or"]
-
-identifier :: Parser String
-identifier = (lexeme . try) (p >>= check)
-  where
-    p       = (:) <$> letterChar <*> many alphaNumChar
-    check x = if x `elem` rws
-                then fail $ "keyword " ++ show x ++ " cannot be an identifier"
-                else return x
 
 data WdlDeclaration = WdlType {
                                  _type :: WdlType,
                                  name :: String
                               }
-
-
-whileParser :: Parser Stmt
-whileParser = between sc eof stmt
-
-stmt :: Parser Stmt
-stmt = f <$> sepBy1 stmt' semi
-  where
-    -- if there's only one stmt return it without using ‘Seq’
-    f l = if length l == 1 then head l else Seq l
-
-stmt' :: Parser Stmt
-stmt' = ifStmt
-  <|> whileStmt
-  <|> skipStmt
-  <|> assignStmt
-  <|> parens stmt
-
-ifStmt :: Parser Stmt
-ifStmt = do
-  rword "if"
-  cond  <- bExpr
-  rword "then"
-  stmt1 <- stmt
-  rword "else"
-  stmt2 <- stmt
-  return (If cond stmt1 stmt2)
-
-whileStmt :: Parser Stmt
-whileStmt = do
-  rword "while"
-  cond <- bExpr
-  rword "do"
-  stmt1 <- stmt
-  return (While cond stmt1)
-
-assignStmt :: Parser Stmt
-assignStmt = do
-  var  <- identifier
-  void (symbol ":=")
-  expr <- aExpr
-  return (Assign var expr)
-
-skipStmt :: Parser Stmt
-skipStmt = Skip <$ rword "skip"
-
-aExpr :: Parser AExpr
-aExpr = makeExprParser aTerm aOperators
-
-bExpr :: Parser BExpr
-bExpr = makeExprParser bTerm bOperators
-
-aOperators :: [[Operator Parser AExpr]]
-aOperators =
-  [ [Prefix (Neg <$ symbol "-") ]
-  , [ InfixL (ABinary Multiply <$ symbol "*")
-    , InfixL (ABinary Divide   <$ symbol "/") ]
-  , [ InfixL (ABinary Add      <$ symbol "+")
-    , InfixL (ABinary Subtract <$ symbol "-") ]
-  ]
-
-bOperators :: [[Operator Parser BExpr]]
-bOperators =
-  [ [Prefix (Not <$ rword "not") ]
-  , [InfixL (BBinary And <$ rword "and")
-    , InfixL (BBinary Or <$ rword "or") ]
-  ]
-
-aTerm :: Parser AExpr
-aTerm = parens aExpr
-  <|> Var      <$> identifier
-  <|> IntConst <$> integer
-
-bTerm :: Parser BExpr
-bTerm =  parens bExpr
-  <|> (BoolConst True  <$ rword "true")
-  <|> (BoolConst False <$ rword "false")
-  <|> rExpr
-
-rExpr :: Parser BExpr
-rExpr = do
-  a1 <- aExpr
-  op <- relation
-  a2 <- aExpr
-  return (RBinary op a1 a2)
-
-relation :: Parser RBinOp
-relation = (Greater <$ symbol ">")
-  <|> (Less <$ symbol "<")
-
 
 {-
 
@@ -209,36 +63,47 @@ importParser = WdlImport <$> (_import *> lexeme (many alphaNumChar))
 
 wdlType = rword "File"
 
---wfParser :: Parser Workflow
+wfParser :: Parser Workflow
+wfParser = (\x y -> Workflow { name = x, body = y }) <$> nameParser <*> workflowSecondPart
 
+nameParser :: Parser String
+nameParser = workflow *> wdlName
+
+workflowSecondPart :: Parser [WorkflowBodyElement]
+workflowSecondPart = between left_brace right_brace (many (workflowBodyElementParser <* traceM "parsed something"))
 
 data Call = Call {
   name :: String
                  }
+                 deriving (Show)
 
 --     $wf_body_element = $call | $declaration | $while_loop | $if_stmt | $scatter | $wf_outputs | $wf_parameter_meta | $wf_meta
 data WorkflowBodyElement = CallElement (Call) | WorkflowOutputsElement (WorkflowOutputs)
+  deriving (Show)
 
 workflowBodyElementParser :: Parser WorkflowBodyElement
 workflowBodyElementParser = WorkflowOutputsElement <$> workflowOutputsParser <|> CallElement <$> callParser
 
-
 callParser :: Parser Call
-callParser = Call <$> (call *> many alphaNumChar)
-
+callParser = Call <$> (call *> wdlName)
 
 workflowOutputsParser :: Parser WorkflowOutputs
-workflowOutputsParser = WorkflowOutputs <$> (output *> left_brace *> many (many alphaNumChar) <* right_brace)
+workflowOutputsParser = WorkflowOutputs <$> (output *> left_brace *>  manyTill worklowOutputElement right_brace)
 
+worklowOutputElement = lexeme (try (many (letterChar <|> char '.')))
+
+wdlName :: Parser String
+wdlName = lexeme (many (letterChar <|> char '_'))
+
+stringsParser :: Parser String
+stringsParser = lexeme (many letterChar)
+
+testParser =  manyTill stringsParser eof
 
 data WorkflowOutputs = WorkflowOutputs {
   outputs :: [String]
                                        }
-
-instance Show WorkflowOutputs where
-    show wo = head (outputs wo)
-
-
+                                       deriving (Show)
 
 data WdlStmt = WdlStmt {
                         imports :: [WdlImport],
@@ -285,7 +150,8 @@ data WdlType =
 data Workflow = Workflow {
 name :: String,
 body :: [WorkflowBodyElement]
-                                          }
+                         }
+                         deriving (Generic, Show)
 
 data Wf_Or_Task_Or_Declaration =
     WorkflowDeclaration (Workflow)

@@ -21,8 +21,8 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
-- megaparsec
-- parser-combinators
+- megaparsec >= 7.0.4
+  # - parser-combinators
 
 library:
   source-dirs: src
