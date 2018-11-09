@@ -27,8 +27,12 @@ t1 = do
     contents <- readFile "test/output.txt"
     parseTest (between sc eof workflowOutputsParser ) contents
 
+t4 :: IO()
+t4 = parseTest worklowOutputElement "some.thing"
+
 main :: IO ()
 main = do
     t2
     t1
     t3
+    t4

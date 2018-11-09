@@ -45,23 +45,8 @@ data WdlDeclaration = WdlType {
                                  name :: String
                               }
 
-{-
-
-wdlParser :: Parser WdlStmt
-wdlParser = between sc eof wdlStmt
-
-wdlStmt :: Parser WdlStmt
-wdlStmt = WdlStmt <$> many importParser <*> many wf_or_task_or_declaration
-
-wf_or_task_or_declaration :: Parser Wf_Or_Task_Or_Declaration
-wf_or_task_or_declaration = wfParser <|> taskParser -- needs decl
--}
-
 importParser :: Parser WdlImport
 importParser = WdlImport <$> (_import *> lexeme (many alphaNumChar))
-
-
-wdlType = rword "File"
 
 wfParser :: Parser Workflow
 wfParser = (\x y -> Workflow { name = x, body = y }) <$> nameParser <*> workflowSecondPart
@@ -70,7 +55,7 @@ nameParser :: Parser String
 nameParser = workflow *> wdlName
 
 workflowSecondPart :: Parser [WorkflowBodyElement]
-workflowSecondPart = between left_brace right_brace (many (workflowBodyElementParser <* traceM "parsed something"))
+workflowSecondPart = between left_brace right_brace (many workflowBodyElementParser)
 
 data Call = Call {
   name :: String
@@ -90,7 +75,7 @@ callParser = Call <$> (call *> wdlName)
 workflowOutputsParser :: Parser WorkflowOutputs
 workflowOutputsParser = WorkflowOutputs <$> (output *> left_brace *>  manyTill worklowOutputElement right_brace)
 
-worklowOutputElement = lexeme (try (many (letterChar <|> char '.')))
+worklowOutputElement = lexeme (many (letterChar <|> char '.'))
 
 wdlName :: Parser String
 wdlName = lexeme (many (letterChar <|> char '_'))
@@ -148,12 +133,37 @@ data WdlType =
     | String
 
 data Workflow = Workflow {
-name :: String,
-body :: [WorkflowBodyElement]
+                            name :: String,
+                            body :: [WorkflowBodyElement]
                          }
-                         deriving (Generic, Show)
+                         deriving (Show)
 
 data Wf_Or_Task_Or_Declaration =
     WorkflowDeclaration (Workflow)
                 | Task
                 | Declaration
+
+{-
+
+task hello {
+  String addressee
+  command {
+    echo "Hello ${addressee}!"
+  }
+  output {
+    String salutation = read_string(stdout())
+  }
+  runtime {
+    docker: "ubuntu@sha256:71cd81252a3563a03ad8daee81047b62ab5d892ebbfbf71cf53415f29c130950"
+  }
+}
+-}
+
+data OutputFileDescriptors = StdIn | StdOut
+
+data TaskOutput = TaskOutput [TaskOutputDeclaration]
+
+data TaskOutputDeclaration = TaskOutputDeclaration {
+                                                      name :: String,
+                                                      expression :: String
+                                                   }
